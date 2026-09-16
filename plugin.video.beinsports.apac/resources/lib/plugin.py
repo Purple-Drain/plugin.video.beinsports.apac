@@ -1,4 +1,5 @@
 import codecs
+import json
 import time
 import re
 from xml.sax.saxutils import escape
@@ -11,6 +12,9 @@ from .api import API
 from .language import _
 from .constants import WV_LICENSE_URL, HEADERS
 from .settings import settings
+from .menu_logic import (RECENT_TYPE, UPCOMING_TYPE, fixture_items,
+                         group_fixtures, live_events, select_vod_rows,
+                         variant_label, vod_items)
 
 api = API()
 
@@ -29,6 +33,9 @@ def home(**kwargs):
         folder.add_item(label=_(_.LOGIN, _bold=True), path=plugin.url_for(login), bookmark=False)
     else:
         folder.add_item(label=_(_.LIVE_TV, _bold=True), path=plugin.url_for(live_tv))
+        folder.add_item(label='Catch Up', path=plugin.url_for(catch_up))
+        folder.add_item(label='Upcoming Live', path=plugin.url_for(upcoming_live))
+        folder.add_item(label='Recently Live', path=plugin.url_for(recently_live))
 
         if settings.getBool('bookmarks', True):
             folder.add_item(label=_(_.BOOKMARKS, _bold=True), path=plugin.url_for(plugin.ROUTE_BOOKMARKS), bookmark=False)
@@ -134,6 +141,80 @@ def play(channel_id=None, vod_id=None, **kwargs):
     )
 
 
+def _add_playable(folder, item, label=None):
+    folder.add_item(
+        label=label or item.get('Title') or item.get('Name') or 'Untitled',
+        info={'plot': item.get('Subtitle') or '',
+              'duration': item.get('Duration') or 0},
+        art={'thumb': item.get('Poster')},
+        path=plugin.url_for(play, vod_id=item.get('Id')),
+        playable=True,
+    )
+
+
+@plugin.route()
+def catch_up(**kwargs):
+    folder = plugin.Folder('Catch Up')
+    for row in select_vod_rows(api._menu()):
+        name = row.get('Name') or 'VOD'
+        folder.add_item(label=name, path=plugin.url_for(catch_up_row, name=name))
+    return folder
+
+
+@plugin.route()
+def catch_up_row(name=None, **kwargs):
+    """One competition: a folder per fixture (full match + highlights
+    grouped on beIN's shared content id, see menu_logic.group_fixtures),
+    ungrouped items (round recaps) listed alongside, in beIN's own order."""
+    folder = plugin.Folder(name or 'Catch Up')
+    for kind, payload in group_fixtures(vod_items(api._menu(), name)):
+        if kind == 'fixture':
+            folder.add_item(
+                label=payload['title'],
+                art={'thumb': payload.get('poster')},
+                path=plugin.url_for(catch_up_fixture, name=name, key=payload['key']),
+            )
+        else:
+            _add_playable(folder, payload)
+    return folder
+
+
+@plugin.route()
+def catch_up_fixture(name=None, key=None, **kwargs):
+    """One fixture: its variants as playable items, full match first."""
+    items = fixture_items(vod_items(api._menu(), name), key)
+    folder = plugin.Folder(items[0].get('Title') if items else (name or 'Fixture'))
+    for item in items:
+        _add_playable(folder, item, label=variant_label(item))
+    return folder
+
+
+def _live_events_folder(title, kind):
+    folder = plugin.Folder(title)
+    for item in live_events(api._menu(), kind):
+        plot = u'{}\n{} - {}'.format(
+            item.get('Subtitle') or '',
+            item.get('EventStartTime') or '', item.get('EventEndTime') or '')
+        # Info-only: these items carry no ChannelId/VodId (see menu_logic's
+        # live_events docstring), so no playable path is offered.
+        folder.add_item(
+            label=item.get('Title') or 'Event',
+            info={'plot': plot},
+            art={'thumb': item.get('Poster')},
+        )
+    return folder
+
+
+@plugin.route()
+def upcoming_live(**kwargs):
+    return _live_events_folder('Upcoming Live', UPCOMING_TYPE)
+
+
+@plugin.route()
+def recently_live(**kwargs):
+    return _live_events_folder('Recently Live', RECENT_TYPE)
+
+
 @plugin.route()
 def logout(**kwargs):
     if not gui.yes_no(_.LOGOUT_YES_NO):
@@ -175,3 +256,18 @@ def epg(output, **kwargs):
                         escape(program['Title']), escape(program['Subtitle']), program['Poster']))
 
         f.write(u'</tv>')
+
+
+@plugin.route()
+@plugin.merge()
+@plugin.login_required()
+def menu_dump(output, **kwargs):
+    """Write api._menu()'s raw response to `output` as JSON -- the same
+    RunPlugin(...&output=<path>)-then-poll handshake this file's own epg()
+    route already uses for IPTV Merge, reused here so kodi-strm-pipeline's
+    service.sport.sync can read the full menu (Type 6/7 rows) for its own
+    Football hub without reimplementing this add-on's session handling.
+    Never shown in this add-on's own home menu -- triggered only by that
+    other add-on's service."""
+    with open(output, 'w', encoding='utf-8') as f:
+        json.dump(api._menu(), f)
