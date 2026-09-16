@@ -1,0 +1,23 @@
+msgid ""
+msgstr ""
+
+msgctxt "#30004"
+msgid "Email / Password"
+msgstr ""
+
+msgctxt "#30005"
+msgid "1. Go to [B]bein.watch/tv[/B] in a browser\n"
+"2. Login and enter code: [B]{code}[/B]"
+msgstr ""
+
+msgctxt "#30006"
+msgid "Login with"
+msgstr ""
+
+msgctxt "#30007"
+msgid "Unable to find video asset"
+msgstr ""
+
+msgctxt "#30009"
+msgid "Catch Up"
+msgstr ""
