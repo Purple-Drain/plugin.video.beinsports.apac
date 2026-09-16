@@ -1,0 +1,6 @@
+[B]0.5.2+pd.1[/B]
+- Fork baseline: SlyGuy's upstream 0.5.2 (matthuisman/slyguy.addons), unmodified.
+- Restored Catch Up/VOD browsing, removed upstream between 0.4.1 and 0.5.2.
+- Each fixture's full match, extended highlights and short highlights grouped into one folder.
+- Added Upcoming Live and Recently Live info folders.
+- Added a menu_dump route for kodi-strm-pipeline's Football hub.
